@@ -50,3 +50,28 @@ def calculator_tool(expression: str) -> str:
         return str(result)
     except Exception as e:
         return f"Calculation error: {str(e)}"
+
+
+@tool
+def save_markdown_tool(content: str, filename: str) -> str:
+    """Save markdown content to a file.
+
+    Args:
+        content: The markdown content to save.
+        filename: The filename to save as (e.g., "my_report.md").
+
+    Returns:
+        The full path to the saved file.
+    """
+    import os
+
+    # Ensure outputs directory exists
+    output_dir = "outputs"
+    os.makedirs(output_dir, exist_ok=True)
+
+    filepath = os.path.join(output_dir, filename)
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    return filepath

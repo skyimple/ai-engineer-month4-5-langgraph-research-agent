@@ -1,0 +1,189 @@
+"""Intelligent nodes for the Research Agent."""
+import json
+from typing import Any
+
+from langchain_core.messages import HumanMessage, AIMessage
+
+from src.config import llm
+from src.tools import search_tool
+
+
+def planner_node(state: dict) -> dict:
+    """Plan the research approach by calling LLM with search tool.
+
+    Args:
+        state: Current research state with 'topic'
+
+    Returns:
+        Updated state with 'research_steps' list
+    """
+    topic = state["topic"]
+    print(f"Planning research for: {topic}")
+
+    # System prompt for planner
+    planner_prompt = f"""你是一个研究规划专家。请为以下主题制定3-5个研究步骤：
+
+主题：{topic}
+
+请以JSON格式返回研究步骤列表，格式如下：
+{{"research_steps": ["步骤1", "步骤2", "步骤3"]}}
+
+每个步骤应该是一个具体的搜索查询或研究任务。"""
+
+    # Bind search tool to LLM
+    llm_with_tools = llm.bind_tools([search_tool])
+
+    # Call LLM
+    response = llm_with_tools.invoke([
+        HumanMessage(content=planner_prompt)
+    ])
+
+    # Parse response to get research steps
+    research_steps = []
+    if hasattr(response, "content") and response.content:
+        try:
+            # Try to extract JSON from response
+            content = response.content
+            if "```json" in content:
+                json_str = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                json_str = content.split("```")[1].split("```")[0]
+            else:
+                json_str = content
+
+            parsed = json.loads(json_str.strip())
+            research_steps = parsed.get("research_steps", [])
+        except (json.JSONDecodeError, IndexError):
+            # Fallback: split by newlines
+            research_steps = [
+                line.strip() for line in response.content.split("\n")
+                if line.strip() and line.strip()[0].isdigit()
+            ]
+
+    # If still empty, use topic as single step
+    if not research_steps:
+        research_steps = [f"{topic}的基本概念", f"{topic}的最新发展", f"{topic}的应用场景"]
+
+    print(f"Generated {len(research_steps)} research steps")
+    return {"research_steps": research_steps}
+
+
+def researcher_node(state: dict) -> dict:
+    """Conduct research by executing search for each step.
+
+    Args:
+        state: Current state with 'research_steps'
+
+    Returns:
+        Updated state with 'messages' and 'sources'
+    """
+    research_steps = state.get("research_steps", [])
+    print(f"Researching {len(research_steps)} steps...")
+
+    messages = list(state.get("messages", []))
+    sources = list(state.get("sources", []))
+
+    for i, step in enumerate(research_steps):
+        print(f"  [{i+1}/{len(research_steps)}] Searching: {step}")
+
+        # Execute search tool
+        result = search_tool.invoke(step)
+
+        # Add to messages
+        messages.append(HumanMessage(content=f"Research step: {step}"))
+        messages.append(AIMessage(content=result))
+
+        # Extract source info from result
+        lines = result.split("\n")
+        for line in lines:
+            if line.strip().startswith("- "):
+                # Parse "- Title: URL" format
+                parts = line[2:].split(": ", 1)
+                if len(parts) >= 1:
+                    title = parts[0].strip()
+                    url = parts[1].split("\n")[0].strip() if len(parts) > 1 else ""
+                    snippet = line.split("\n  ")[1] if "\n  " in line else ""
+
+                    # Avoid duplicates
+                    source_entry = {"title": title, "url": url, "snippet": snippet}
+                    if source_entry not in sources:
+                        sources.append(source_entry)
+
+    print(f"Collected {len(sources)} unique sources")
+    return {"messages": messages, "sources": sources}
+
+
+def writer_node(state: dict) -> dict:
+    """Write the research report using collected information.
+
+    Args:
+        state: Current state with 'messages' and 'sources'
+
+    Returns:
+        Updated state with 'report_draft'
+    """
+    topic = state["topic"]
+    messages = state.get("messages", [])
+    sources = state.get("sources", [])
+
+    print(f"Writing report on: {topic}")
+
+    # Format sources for the prompt
+    sources_text = ""
+    for i, s in enumerate(sources, 1):
+        sources_text += f"{i}. **{s.get('title', 'Untitled')}**\n   URL: {s.get('url', 'N/A')}\n   {s.get('snippet', '')}\n\n"
+
+    writer_prompt = f"""你是一个专业的研究报告撰写专家。请根据以下研究资料撰写一份结构良好的Markdown研究报告。
+
+主题：{topic}
+
+## 报告要求
+1. 标题（# 标题格式）
+2. 摘要（Abstract）- 简要概述主题
+3. 正文小节 - 使用##格式
+4. 来源列表 - 列出所有参考来源
+
+## 研究资料
+{sources_text if sources_text else "（暂无研究资料，请基于主题撰写基本信息）"}
+
+## 输出格式
+请直接输出Markdown格式的研究报告，不要添加额外的解释。"""
+
+    # Call LLM to generate report
+    response = llm.invoke([
+        HumanMessage(content=writer_prompt)
+    ])
+
+    report_draft = response.content if hasattr(response, "content") else str(response)
+
+    print(f"Report written ({len(report_draft)} chars)")
+    return {"report_draft": report_draft}
+
+
+def saver_node(state: dict) -> dict:
+    """Save the report to a markdown file.
+
+    Args:
+        state: Current state with 'report_draft'
+
+    Returns:
+        Updated state with 'final_markdown_path'
+    """
+    from src.tools import save_markdown_tool
+
+    report_draft = state.get("report_draft", "")
+    topic = state.get("topic", "research_report")
+
+    # Generate filename from topic
+    filename = f"{topic[:30].replace(' ', '_')}_report.md"
+
+    print(f"Saving report to outputs/{filename}")
+
+    # Save the report
+    result = save_markdown_tool.invoke({
+        "content": report_draft,
+        "filename": filename
+    })
+
+    print(f"Saved: {result}")
+    return {"final_markdown_path": result}

@@ -1,1 +1,1 @@
-# Research Agent - Week 1: Simple ReAct Agent
+# Research Agent - LangGraph Workflow
