@@ -1,6 +1,7 @@
 """LangGraph workflow for the research agent."""
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.state import ResearchState
 from src.nodes import planner_node, researcher_node, writer_node, saver_node
@@ -20,4 +21,5 @@ workflow.add_edge("researcher", "writer")
 workflow.add_edge("writer", "saver")
 workflow.add_edge("saver", END)
 
-graph = workflow.compile()
+checkpointer = MemorySaver()
+graph = workflow.compile(checkpointer=checkpointer, interrupt_before=["researcher", "saver"])

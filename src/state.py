@@ -14,3 +14,4 @@ class ResearchState(TypedDict):
     sources: List[dict]
     report_draft: str
     final_markdown_path: str
+    user_feedback: str = ""

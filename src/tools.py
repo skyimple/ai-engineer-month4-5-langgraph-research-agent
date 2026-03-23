@@ -1,18 +1,11 @@
 """Tools for the Research Agent."""
-import os
-from dotenv import load_dotenv
 from langchain_core.tools import tool
-from tavily import TavilyClient
-
-load_dotenv('config.env')
-
-# Initialize Tavily client
-tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+from ddgs import DDGS
 
 
 @tool
 def search_tool(query: str) -> str:
-    """Search the web for information using Tavily.
+    """Search the web for information using DuckDuckGo.
 
     Args:
         query: The search query string.
@@ -21,11 +14,10 @@ def search_tool(query: str) -> str:
         Search results as a string.
     """
     try:
-        results = tavily_client.search(query=query, max_results=5)
-        # Format results nicely
+        results = list(DDGS().text(query, max_results=5))
         formatted = []
-        for r in results.get("results", []):
-            formatted.append(f"- {r.get('title', 'No title')}: {r.get('url', '')}\n  {r.get('content', '')}")
+        for r in results:
+            formatted.append(f"- {r['title']}: {r['href']}\n  {r['body']}")
         return "\n".join(formatted) if formatted else "No results found."
     except Exception as e:
         return f"Search error: {str(e)}"
