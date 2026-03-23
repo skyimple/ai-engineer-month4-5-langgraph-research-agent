@@ -32,6 +32,12 @@ wheels/
 *.swp
 *.swo
 
+# Claude Code
+.claude/
+
+# Agent output
+outputs/
+
 # OS
 .DS_Store
 Thumbs.db
