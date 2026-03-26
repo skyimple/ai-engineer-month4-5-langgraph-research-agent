@@ -52,20 +52,44 @@ simple_react.py          # Legacy ReAct agent with manual while-loop
 ## API Configuration
 
 Environment variables loaded from `config.env`:
-- `DASHSCOPE_API_KEY` - Alibaba Cloud DashScope (required)
-- `TAVILY_API_KEY` - Tavily web search (required)
+- `DASHSCOPE_API_KEY` - Alibaba Cloud DashScope API key for Qwen3.5-plus model (required)
+- DuckDuckGo is used for web search (no API key required, uses `duckduckgo-search` package)
+
+## Human-in-the-Loop Architecture
+
+The agent uses LangGraph's `interrupt_before` to pause at key nodes for human review:
+
+```python
+graph = workflow.compile(
+    checkpointer=MemorySaver(),
+    interrupt_before=["researcher", "saver"]  # Interrupt before these nodes
+)
+```
+
+**Workflow with interrupts:**
+1. `planner` → interrupt → user approves/modifies research plan
+2. `researcher` → executes searches
+3. `writer` → interrupt → user approves/modifies report draft
+4. `saver` → saves to `outputs/`
+
+User interactions:
+- `approve` - continue to next step
+- `modify: <instruction>` - re-run node with modification instruction
+
+**State persistence:** `MemorySaver` checkpointer maintains execution state, allowing resumption after interrupts via `Command(resume="continue")`.
 
 ## Key Dependencies
 
-- **langgraph** - Workflow orchestration
+- **langgraph** - Workflow orchestration with checkpointing and interrupts
 - **langchain-openai** - LLM interface (DashScope compatible)
-- **tavily-python** - Web search tool
+- **duckduckgo-search** - Web search tool
 - **python-dotenv** - Environment variable loading
 
 ## Notes
 
-- System prompts are in Chinese
-- `src/main.py` hardcodes topic="AI" - modify for other topics
+- System prompts and CLI are in Chinese
+- `src/main.py` accepts topic as CLI argument: `python -m src.main "AI"`
 - Reports are saved to `outputs/{topic}_report.md`
 - `calculator_tool` validates input characters before eval() for security
-- `simple_react.py` includes UTF-8 encoding setup for Windows stdout/stderr/stdin
+- `simple_react.py` is a legacy ReAct agent with manual while-loop (pre-LangGraph)
+- `src/__init__.py` exists but is empty (package marker only)
