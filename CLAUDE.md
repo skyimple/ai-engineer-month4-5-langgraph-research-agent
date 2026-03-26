@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Research agent that uses LangGraph's StateGraph for workflow orchestration. The agent performs web search and generates research reports. It uses Alibaba Cloud DashScope's Qwen3.5-plus model via OpenAI-compatible API.
+Research agent using LangGraph's StateGraph for workflow orchestration with human-in-the-loop. Uses Alibaba Cloud DashScope's Qwen3.5-plus model via OpenAI-compatible API. Supports LangSmith tracing, Phoenix observability, A/B testing, and Guardrails security.
 
 ## Commands
 
@@ -12,84 +12,79 @@ Research agent that uses LangGraph's StateGraph for workflow orchestration. The 
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the LangGraph research agent (topic from argument or interactive input)
+# Run the LangGraph research agent
 python -m src.main "AI"
 
-# Run the interactive ReAct agent (legacy manual loop)
-python simple_react.py
+# Run A/B comparison test
+python ab_test.py "AI"
 
-# Run tests in Jupyter notebook
-jupyter notebook test.ipynb
+# Run evaluation system
+python evals/runners/daily_eval.py
+python evals/runners/daily_eval.py --limit 5  # limit topics
+
+# Legacy ReAct agent
+python simple_react.py
 ```
 
 ## Architecture
 
+**Core LangGraph Workflow** (linear pipeline with interrupts):
 ```
-src/
-  main.py                # CLI entry point for LangGraph agent
-  graph.py               # LangGraph StateGraph workflow definition
-  nodes.py                # Agent nodes: planner, researcher, writer, saver
-  state.py               # ResearchState TypedDict
-  config.py              # LLM configuration (DashScope API, Qwen3.5-plus)
-  tools.py               # Tools: search_tool, calculator_tool, save_markdown_tool
-simple_react.py          # Legacy ReAct agent with manual while-loop
+planner → [interrupt] → researcher → writer → [interrupt] → saver
 ```
 
-**LangGraph Workflow** (linear pipeline):
-1. `planner_node` - Generates research steps using LLM + search tool
-2. `researcher_node` - Executes searches for each step, collects sources
-3. `writer_node` - Generates Markdown report using collected information
-4. `saver_node` - Saves report to `outputs/` directory
+**Key Files:**
+- `src/main.py` - CLI entry point with human-in-the-loop interaction
+- `src/graph.py` - StateGraph definition with `interrupt_before=["researcher", "saver"]`
+- `src/nodes.py` - 4 nodes: planner, researcher, writer, saver (all `@traceable`)
+- `src/state.py` - ResearchState TypedDict
+- `src/config.py` - LLM config, LangSmith, Phoenix, A/B testing configuration
+- `src/guardrails/rails.py` - Input/output security checks
 
-**ResearchState** (TypedDict):
-- `topic`: Research topic
-- `messages`: Conversation history (Annotated with add_messages)
-- `research_steps`: List of planned search queries
-- `sources`: List of dicts with title, url, snippet
-- `report_draft`: Generated Markdown content
-- `final_markdown_path`: Output file path
+**Production Components:**
+- `evals/` - Evaluation system (metrics, datasets, runners)
+- `ab_test.py` - A/B testing framework for comparing model versions
+- `.github/workflows/daily_eval.yml` - GitHub Actions scheduled evaluation
 
 ## API Configuration
 
-Environment variables loaded from `config.env`:
-- `DASHSCOPE_API_KEY` - Alibaba Cloud DashScope API key for Qwen3.5-plus model (required)
-- DuckDuckGo is used for web search (no API key required, uses `duckduckgo-search` package)
+Environment variables from `config.env`:
+- `DASHSCOPE_API_KEY` - Alibaba Cloud DashScope API key (required)
+- `LANGSMITH_API_KEY` - LangSmith tracing (optional)
+- `LANGSMITH_PROJECT` - LangSmith project name (default: "research-agent")
+- `AB_TEST_PROMPT_VERSION` - A/B version: "A" or "B"
+- `AB_TEST_MODEL_A` / `AB_TEST_MODEL_B` - Model names for A/B testing
 
-## Human-in-the-Loop Architecture
+DuckDuckGo is used for web search (no API key required).
 
-The agent uses LangGraph's `interrupt_before` to pause at key nodes for human review:
+## Human-in-the-Loop
+
+The agent pauses at `researcher` and `saver` nodes for human review:
 
 ```python
 graph = workflow.compile(
     checkpointer=MemorySaver(),
-    interrupt_before=["researcher", "saver"]  # Interrupt before these nodes
+    interrupt_before=["researcher", "saver"]
 )
 ```
 
-**Workflow with interrupts:**
-1. `planner` → interrupt → user approves/modifies research plan
-2. `researcher` → executes searches
-3. `writer` → interrupt → user approves/modifies report draft
-4. `saver` → saves to `outputs/`
-
-User interactions:
+User interactions at interrupt points:
 - `approve` - continue to next step
-- `modify: <instruction>` - re-run node with modification instruction
+- `modify: <instruction>` - re-run node with modification
 
-**State persistence:** `MemorySaver` checkpointer maintains execution state, allowing resumption after interrupts via `Command(resume="continue")`.
+## Production Features
 
-## Key Dependencies
+**Observability:** LangSmith tracing with `@traceable(metadata={"node": "planner"})` on all nodes. Phoenix integration via `ARIZE_PHOENIX_API_KEY` environment variable.
 
-- **langgraph** - Workflow orchestration with checkpointing and interrupts
-- **langchain-openai** - LLM interface (DashScope compatible)
-- **duckduckgo-search** - Web search tool
-- **python-dotenv** - Environment variable loading
+**Evaluation:** `evals/runners/daily_eval.py` calculates faithfulness, relevance, and source_accuracy metrics against 30 test topics in `evals/datasets/topics.json`.
+
+**A/B Testing:** `ab_test.py` runs the same topic through versions A and B, comparing latency, token usage, and output quality. Reports saved to `evals/reports/`.
+
+**Security:** `src/guardrails/rails.py` checks user input and agent output for dangerous patterns (SQL injection, code execution, XSS). Logs written to `logs/guardrails_logs/`.
 
 ## Notes
 
 - System prompts and CLI are in Chinese
-- `src/main.py` accepts topic as CLI argument: `python -m src.main "AI"`
-- Reports are saved to `outputs/{topic}_report.md`
-- `calculator_tool` validates input characters before eval() for security
-- `simple_react.py` is a legacy ReAct agent with manual while-loop (pre-LangGraph)
-- `src/__init__.py` exists but is empty (package marker only)
+- Reports saved to `outputs/{topic}_report.md`
+- `calculator_tool` in `tools.py` validates input before `eval()` for security
+- `simple_react.py` is legacy pre-LangGraph implementation
