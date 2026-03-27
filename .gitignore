@@ -38,6 +38,12 @@ wheels/
 # Agent output
 outputs/
 
+# Evaluation reports
+evals/reports/
+
+# Logs
+logs/
+
 # OS
 .DS_Store
 Thumbs.db
