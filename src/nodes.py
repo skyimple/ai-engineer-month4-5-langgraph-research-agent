@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from src.config import llm, get_llm, traceable
 from src.tools import search_tool
+from src.guardrails.rails import check_output_guardrails
 
 
 def clean_string(s: str) -> str:
@@ -150,6 +151,13 @@ def researcher_node(state: dict) -> dict:
                         sources.append(source_entry)
 
     print(f"Collected {len(sources)} unique sources")
+
+    # Check output guardrails before returning
+    if messages:
+        is_safe, safety_msg = check_output_guardrails(messages[-1].content)
+        if not is_safe:
+            raise ValueError(safety_msg)
+
     return {"messages": messages, "sources": sources}
 
 
@@ -216,6 +224,11 @@ def writer_node(state: dict, llm=None) -> dict:
     ])
 
     report_draft = response.content if hasattr(response, "content") else str(response)
+
+    # Check output guardrails before returning
+    is_safe, safety_msg = check_output_guardrails(report_draft)
+    if not is_safe:
+        raise ValueError(safety_msg)
 
     print(f"Report written ({len(report_draft)} chars)")
     return {"report_draft": report_draft}

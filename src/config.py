@@ -12,23 +12,60 @@ if not api_key:
     raise ValueError("未找到 DASHSCOPE_API_KEY")
 
 # ============== LangSmith 配置 ==============
-LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
-LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "research-agent")
-os.environ["LANGSMITH_API_KEY"] = LANGSMITH_API_KEY or ""
-os.environ["LANGSMITH_PROJECT"] = LANGSMITH_PROJECT
+LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY", "")
+LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "research-agent")
+os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2", "true")
+os.environ["LANGCHAIN_API_KEY"] = LANGCHAIN_API_KEY
+os.environ["LANGCHAIN_PROJECT"] = LANGCHAIN_PROJECT
 
 # ============== Phoenix 配置 ==============
+PHOENIX_AVAILABLE = False
+PHOENIX_TRACING_ENABLED = False
+
 try:
     import phoenix as px
+    from phoenix.otel import register
     PHOENIX_AVAILABLE = True
 except ImportError:
-    PHOENIX_AVAILABLE = False
-    px = None
+    pass
 
 def setup_phoenix():
-    """初始化 Phoenix（可选）"""
-    if PHOENIX_AVAILABLE:
-        px.launch_app()
+    """初始化 Phoenix 追踪（生产环境友好）"""
+    global PHOENIX_TRACING_ENABLED
+    if not PHOENIX_AVAILABLE:
+        print("Phoenix: phoenix 包未安装，跳过")
+        return
+
+    # 默认禁用 Phoenix（需要通过设置 PHOENIX_ENDPOINT 来启用）
+    disable_phoenix = os.getenv("DISABLE_PHOENIX", "1").lower()
+    if disable_phoenix in ("1", "true", "yes"):
+        print("Phoenix: 默认禁用（设置 PHOENIX_ENDPOINT 环境变量来启用）")
+        return
+
+    try:
+        # 配置 OTEL 导出到 Phoenix
+        # 优先使用 PHOENIX_ENDPOINT（自托管 Phoenix）
+        # 本地模式: http://localhost:6006/v1/traces
+        # 云端模式: 需要设置 PHOENIX_API_KEY 环境变量
+        endpoint = os.getenv("PHOENIX_ENDPOINT", "http://localhost:6006/v1/traces")
+
+        print(f"Phoenix: 正在连接到 {endpoint}...")
+
+        tracer_provider = register(
+            project_name=LANGCHAIN_PROJECT,
+            endpoint=endpoint
+        )
+
+        # 设置 LangChain 追踪
+        from openinference.instrumentation.langchain import LangChainInstrumentor
+        LangChainInstrumentor().instrument()
+
+        PHOENIX_TRACING_ENABLED = True
+        print("Phoenix: tracing 已启用")
+    except Exception as e:
+        print(f"Phoenix: 初始化失败 ({type(e).__name__}: {e})")
+        print("Phoenix: 继续运行，不影响主要功能")
+        PHOENIX_TRACING_ENABLED = False
 
 # ============== A/B Testing 配置 ==============
 AB_TEST_PROMPT_VERSION = os.getenv("AB_TEST_PROMPT_VERSION", "A")
