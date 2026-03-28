@@ -70,18 +70,17 @@ jobs:
           if [ -f "$latest_report" ]; then
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             REPORT_PATH="$latest_report" python -c "
-            import json, os
-            with open(os.environ['REPORT_PATH']) as f:
-                report = json.load(f)
-            print(f'- Topics: {report[\"topic_count\"]}')
-            print(f'- Success Rate: {report[\"success_count\"]}/{report[\"topic_count\"]}')
-            print(f'- Overall Score: {report[\"overall_score\"]:.4f}')
-            print('')
-            print('### Metrics')
-            print(f'- Faithfulness: {report[\"metrics\"][\"faithfulness\"][\"average\"]:.4f}')
-            print(f'- Relevance: {report[\"metrics\"][\"relevance\"][\"average\"]:.4f}')
-            print(f'- Source Accuracy: {report[\"metrics\"][\"source_accuracy\"][\"average\"]:.4f}')
-            " >> $GITHUB_STEP_SUMMARY
+import json, os
+report = json.loads(open(os.environ['REPORT_PATH']).read())
+print(f'- Topics: {report[\"topic_count\"]}')
+print(f'- Success Rate: {report[\"success_count\"]}/{report[\"topic_count\"]}')
+print(f'- Overall Score: {report[\"overall_score\"]:.4f}')
+print('')
+print('### Metrics')
+print(f'- Faithfulness: {report[\"metrics\"][\"faithfulness\"][\"average\"]:.4f}')
+print(f'- Relevance: {report[\"metrics\"][\"relevance\"][\"average\"]:.4f}')
+print(f'- Source Accuracy: {report[\"metrics\"][\"source_accuracy\"][\"average\"]:.4f}')
+" >> $GITHUB_STEP_SUMMARY
           else
             echo "No report file found." >> $GITHUB_STEP_SUMMARY
           fi
