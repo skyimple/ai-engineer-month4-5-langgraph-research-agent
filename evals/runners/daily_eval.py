@@ -11,9 +11,7 @@ from typing import List, Dict, Any
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from evals.metrics.faithfulness import batch_evaluate_faithfulness
-from evals.metrics.relevance import batch_evaluate_relevance, evaluate_relevance_with_golden
-from evals.metrics.source_accuracy import batch_evaluate_source_accuracy
+from evals.metrics.llm_judge import evaluate_all_metrics, evaluate_citation_quality
 
 # Load environment
 from dotenv import load_dotenv
@@ -145,7 +143,7 @@ def run_evaluation(topics: List[Dict[str, Any]] = None, limit: int = None) -> Di
 
 
 def calculate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Calculate all evaluation metrics.
+    """Calculate all evaluation metrics using combined LLM calls.
 
     Args:
         results: List of result dicts
@@ -155,41 +153,66 @@ def calculate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     print("\nCalculating metrics...")
 
-    # Faithfulness
-    faithful_results = [
-        {"topic": r["topic"], "answer": r["answer"], "sources": r["sources"]}
-        for r in results if r.get("answer") and r.get("sources")
-    ]
-    faithfulness = batch_evaluate_faithfulness(faithful_results)
+    faithfulness_scores = []
+    relevance_scores = []
+    coverage_scores = []
+    source_accuracy_scores = []
+    source_coverage_scores = []
+    diversity_scores = []
+    citation_scores = []
 
-    # Relevance
-    relevance_results = [
-        {
-            "topic": r["topic"],
-            "answer": r["answer"],
-            "golden_answer": r.get("golden_answer"),
-            "key_points": r.get("key_points")
-        }
-        for r in results if r.get("answer")
-    ]
-    relevance = batch_evaluate_relevance(relevance_results)
+    for i, r in enumerate(results):
+        topic = r.get("topic", "")
+        answer = r.get("answer", "")
+        sources = r.get("sources", [])
+        golden_answer = r.get("golden_answer", "")
+        key_points = r.get("key_points", [])
 
-    # Source accuracy
-    source_results = [
-        {
-            "topic": r["topic"],
-            "sources": r["sources"],
-            "answer": r.get("answer"),
-            "key_points": r.get("key_points")
-        }
-        for r in results if r.get("sources")
-    ]
-    source_metrics = batch_evaluate_source_accuracy(source_results)
+        print(f"  [{i+1}/{len(results)}] Evaluating metrics: {topic}")
+
+        # Single LLM call for faithfulness + relevance + source_accuracy + coverage
+        scores = evaluate_all_metrics(
+            answer=answer,
+            sources=sources,
+            topic=topic,
+            golden_answer=golden_answer,
+            key_points=key_points
+        )
+
+        faithfulness_scores.append(scores["faithfulness"])
+        relevance_scores.append(scores["relevance"])
+        source_accuracy_scores.append(scores["source_accuracy"])
+        coverage_scores.append(scores["coverage"])
+
+        # Citation quality (pure string matching, no LLM call)
+        citation = evaluate_citation_quality(answer, sources)
+        citation_scores.append(citation)
+
+        # Diversity is estimated from source count
+        diversity = min(len(sources) / 10, 1.0) if sources else 0.0
+        diversity_scores.append(diversity)
 
     return {
-        "faithfulness": faithfulness,
-        "relevance": relevance,
-        "source_accuracy": source_metrics
+        "faithfulness": {
+            "scores": faithfulness_scores,
+            "average": sum(faithfulness_scores) / len(faithfulness_scores) if faithfulness_scores else 0.0
+        },
+        "relevance": {
+            "relevance_scores": relevance_scores,
+            "coverage_scores": coverage_scores,
+            "average_relevance": sum(relevance_scores) / len(relevance_scores) if relevance_scores else 0.0,
+            "average_coverage": sum(coverage_scores) / len(coverage_scores) if coverage_scores else 0.0
+        },
+        "source_accuracy": {
+            "accuracy_scores": source_accuracy_scores,
+            "coverage_scores": coverage_scores,
+            "diversity_scores": diversity_scores,
+            "citation_scores": citation_scores,
+            "average_accuracy": sum(source_accuracy_scores) / len(source_accuracy_scores) if source_accuracy_scores else 0.0,
+            "average_coverage": sum(coverage_scores) / len(coverage_scores) if coverage_scores else 0.0,
+            "average_diversity": sum(diversity_scores) / len(diversity_scores) if diversity_scores else 0.0,
+            "average_citation": sum(citation_scores) / len(citation_scores) if citation_scores else 0.0
+        }
     }
 
 
