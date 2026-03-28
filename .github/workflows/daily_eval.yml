@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 8 * * *'  # Run at 8:00 AM UTC daily
   workflow_dispatch:  # Allow manual trigger
+    inputs:
+      topic_limit:
+        description: 'Number of topics to evaluate (default: 5)'
+        required: false
+        default: '5'
 
 jobs:
   evaluate:
@@ -46,7 +51,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: |
-          python -u evals/runners/daily_eval.py 2>&1 || (echo "::error::Evaluation failed with exit code $?" && exit 1)
+          python -u evals/runners/daily_eval.py --limit ${{ github.event.inputs.topic_limit || '5' }} 2>&1 || (echo "::error::Evaluation failed with exit code $?" && exit 1)
 
       - name: Upload evaluation report
         uses: actions/upload-artifact@v4
