@@ -185,6 +185,11 @@ def researcher_node(state: dict) -> dict:
     for i, step in enumerate(research_steps):
         print(f"  [{i+1}/{len(research_steps)}] Searching: {step}", flush=True)
 
+        # Add delay between searches to avoid DuckDuckGo rate limiting
+        if i > 0:
+            import time
+            time.sleep(3)
+
         # Execute search tool
         result = search_tool.invoke(step)
 
