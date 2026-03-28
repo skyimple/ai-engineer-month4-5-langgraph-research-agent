@@ -29,13 +29,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install --quiet -r requirements.txt
 
       - name: Create config.env
         run: |
+          if [ -z "${{ secrets.DASHSCOPE_API_KEY }}" ]; then
+            echo "::error::DASHSCOPE_API_KEY secret is not configured"
+            exit 1
+          fi
           echo "DASHSCOPE_API_KEY=${{ secrets.DASHSCOPE_API_KEY }}" > config.env
           echo "LANGCHAIN_API_KEY=${{ secrets.LANGCHAIN_API_KEY }}" >> config.env
-          echo "LANGCHAIN_TRACING_V2=false" >> config.env
+          echo "LANGCHAIN_TRACING_V2=true" >> config.env
           echo "LANGSMITH_PROJECT=research-agent-eval" >> config.env
 
       - name: Run evaluation
@@ -57,12 +61,12 @@ jobs:
         run: |
           echo "## Daily Evaluation Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          latest_report=$(ls -t evals/reports/daily_eval_*.json | head -1)
+          latest_report=$(ls -t evals/reports/daily_eval_*.json 2>/dev/null | head -1)
           if [ -f "$latest_report" ]; then
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
-            python -c "
-            import json
-            with open('$latest_report') as f:
+            REPORT_PATH="$latest_report" python -c "
+            import json, os
+            with open(os.environ['REPORT_PATH']) as f:
                 report = json.load(f)
             print(f'- Topics: {report[\"topic_count\"]}')
             print(f'- Success Rate: {report[\"success_count\"]}/{report[\"topic_count\"]}')
@@ -73,4 +77,6 @@ jobs:
             print(f'- Relevance: {report[\"metrics\"][\"relevance\"][\"average\"]:.4f}')
             print(f'- Source Accuracy: {report[\"metrics\"][\"source_accuracy\"][\"average\"]:.4f}')
             " >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No report file found." >> $GITHUB_STEP_SUMMARY
           fi
