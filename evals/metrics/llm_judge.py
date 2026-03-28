@@ -113,17 +113,30 @@ coverage: 0.XX
     try:
         response = llm.invoke(prompt)
         content = response.content.strip()
+        print(f"    LLM judge response:\n{content}")
 
         def extract_score(name):
-            match = re.search(rf'{name}:\s*(0?\.\d+)', content, re.IGNORECASE)
-            return float(match.group(1)) if match else 0.5
+            # Try multiple patterns to handle various LLM output formats
+            patterns = [
+                rf'{name}\s*[：:]\s*(\d+\.?\d*)',  # faithfulness: 0.85 or faithfulness：0.85
+                rf'{name}[^0-9]*?(\d+\.?\d*)',      # faithfulness)... 0.85
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    score = float(match.group(1))
+                    return min(score, 1.0)
+            print(f"    WARNING: Could not extract score for '{name}' from response")
+            return 0.5
 
-        return {
+        result = {
             "faithfulness": extract_score("faithfulness"),
             "relevance": extract_score("relevance"),
             "source_accuracy": extract_score("source_accuracy"),
             "coverage": extract_score("coverage")
         }
+        print(f"    Extracted scores: {result}")
+        return result
     except Exception as e:
         print(f"Combined evaluation error: {e}")
         return {
