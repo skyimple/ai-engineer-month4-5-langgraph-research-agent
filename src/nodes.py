@@ -167,8 +167,8 @@ def planner_node(state: dict, original_steps: list = None, llm=None) -> dict:
 def researcher_node(state: dict) -> dict:
     """Conduct research by executing search for each step.
 
-    Uses batched parallel execution (2 concurrent searches) with delays
-    between batches to respect DuckDuckGo rate limits.
+    Uses parallel execution (2 concurrent searches) to speed up research
+    while respecting DuckDuckGo rate limits.
 
     Args:
         state: Current state with 'research_steps'
@@ -176,7 +176,6 @@ def researcher_node(state: dict) -> dict:
     Returns:
         Updated state with 'messages' and 'sources'
     """
-    import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     # Clean state strings to remove surrogate characters
@@ -189,7 +188,6 @@ def researcher_node(state: dict) -> dict:
     sources = list(state.get("sources", []))
 
     MAX_CONCURRENT = 2
-    BATCH_DELAY = 1.0  # seconds between batches
 
     def _run_search(idx, step):
         """Execute a single search step (thread-safe)."""
