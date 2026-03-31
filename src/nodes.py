@@ -203,8 +203,11 @@ def researcher_node(state: dict) -> dict:
             for i, step in enumerate(research_steps)
         ]
         for future in as_completed(futures):
-            idx, step, search_results = future.result()
-            all_results.append((idx, step, search_results))
+            try:
+                idx, step, search_results = future.result()
+                all_results.append((idx, step, search_results))
+            except Exception as e:
+                print(f"  Search failed: {e}", flush=True)
 
     # Sort by original index to maintain message order
     all_results.sort(key=lambda x: x[0])
