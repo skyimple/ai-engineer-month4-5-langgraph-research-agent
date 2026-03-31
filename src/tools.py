@@ -3,7 +3,7 @@ import ast
 import operator
 
 from langchain_core.tools import tool
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 # Supported operators for safe AST evaluation
 _OPERATORS = {
@@ -36,23 +36,42 @@ def _safe_eval_expr(node: ast.AST) -> float:
 
 
 @tool
-def search_tool(query: str) -> str:
+def search_tool(query: str) -> list:
     """Search the web for information using DuckDuckGo.
 
     Args:
         query: The search query string.
 
     Returns:
-        Search results as a string.
+        List of dicts with 'title', 'href', and 'body' keys.
+        Returns empty list on error.
     """
     try:
         results = list(DDGS().text(query, max_results=5))
-        formatted = []
-        for r in results:
-            formatted.append(f"- {r['title']}: {r['href']}\n  {r['body']}")
-        return "\n".join(formatted) if formatted else "No results found."
+        return [
+            {"title": r.get("title", ""), "href": r.get("href", ""), "body": r.get("body", "")}
+            for r in results
+        ]
     except Exception as e:
-        return f"Search error: {str(e)}"
+        print(f"Search error for '{query}': {e}")
+        return []
+
+
+def format_search_results(results: list) -> str:
+    """Format structured search results into a human-readable string.
+
+    Args:
+        results: List of dicts with 'title', 'href', 'body' keys.
+
+    Returns:
+        Formatted string for display or LLM context.
+    """
+    if not results:
+        return "No results found."
+    formatted = []
+    for r in results:
+        formatted.append(f"- {r.get('title', 'Untitled')}: {r.get('href', 'N/A')}\n  {r.get('body', '')}")
+    return "\n".join(formatted)
 
 
 @tool

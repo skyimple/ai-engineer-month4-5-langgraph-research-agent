@@ -5,7 +5,7 @@ langchain-openai
 langchain-community
 langchain-core
 python-dotenv
-duckduckgo-search>=6.0.0
+ddgs>=6.0.0
 
 # LangSmith Tracing
 langsmith
